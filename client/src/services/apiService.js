@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3000`;
+// Auto-detect protocol: if page is served over HTTPS, API calls must also use HTTPS
+// to avoid mixed-content blocking on mobile browsers.
+// Falls back to http:// only when the page itself is http://
+const API_BASE = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:3000`;
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -94,6 +97,24 @@ export function hasToken() {
 
 export function clearToken() {
   localStorage.removeItem('pp_token');
+}
+
+// ============================
+// MERCHANT
+// ============================
+export async function getMerchantQR() {
+  const { data } = await api.get('/api/merchant/qr');
+  return data; // { payload }
+}
+
+export async function payMerchant({ merchantUserId, amount, note }) {
+  const { data } = await api.post('/api/merchant/pay', { merchantUserId, amount, note });
+  return data; // { success, paymentId, merchantName, amount, wallet }
+}
+
+export async function getMerchantCollections() {
+  const { data } = await api.get('/api/merchant/collections');
+  return data; // { payments, total, todayTotal }
 }
 
 export default api;

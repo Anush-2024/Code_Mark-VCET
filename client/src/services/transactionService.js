@@ -21,6 +21,7 @@ export async function createSendTransaction({ amount, recipientId, recipientName
   // Step 2: Build signable payload
   const payload = {
     v: 1,
+    qrType: 'dynamic',   // ← distinguishes from static merchant QR
     id: txnId,
     from: senderPubKey,
     to: recipientId || null,
@@ -31,12 +32,14 @@ export async function createSendTransaction({ amount, recipientId, recipientName
   };
 
   // Step 3: Sign with private key
+  // signTransaction internally does JSON.stringify(payload) -- capture that exact string
   const signature = await signTransaction(payload, privateKey);
+  const payloadString = JSON.stringify(payload);
 
   // Step 4: Mark nonce used locally
   await markNonceUsed(nonce, txnId);
 
-  // Step 5: Save as pending outgoing
+  // Step 5: Save as pending outgoing (include payloadString for backend sync)
   await savePendingTxn({
     id: txnId,
     type: 'sent',
@@ -44,9 +47,13 @@ export async function createSendTransaction({ amount, recipientId, recipientName
     nonce,
     signature,
     payload,
+    payloadString,
+    from_pub: senderPubKey,
+    to_user_id: recipientId || null,
     recipientName: recipientName || 'Unknown',
     status: 'pending',
-    created_at: now
+    created_at: now,
+    expires_at: now + QR_TTL_SECONDS
   });
 
   return {

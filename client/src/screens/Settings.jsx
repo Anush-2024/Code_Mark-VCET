@@ -1,115 +1,246 @@
+/**
+ * Settings.jsx — Based on Stitch "PocketPay Settings" design
+ * Obsidian Midnight Vault design system
+ */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWalletStore } from '../store/walletStore';
-import { wipeKeys, getKeys, getUserProfile } from '../services/storageService';
-import { clearToken } from '../services/apiService';
-import { QRCodeSVG } from 'qrcode.react';
+import { wipeKeys } from '../services/storageService';
+import { getAllTxns } from '../services/storageService';
 
+const SettingRow = ({ icon, iconColor, iconBg, label, desc, onClick, right }) => (
+  <button
+    onClick={onClick}
+    className="w-full flex items-center gap-4 px-5 py-4 hover:bg-white/3 active:bg-white/5 transition-colors text-left group"
+  >
+    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+      <span className={`material-symbols-outlined text-xl ${iconColor}`} style={{ fontVariationSettings: "'FILL' 1" }}>{icon}</span>
+    </div>
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-bold text-white">{label}</p>
+      {desc && <p className="text-xs text-slate-500 mt-0.5">{desc}</p>}
+    </div>
+    {right || <span className="material-symbols-outlined text-slate-700 group-hover:text-slate-500 transition-colors">chevron_right</span>}
+  </button>
+);
+
+const SectionHeader = ({ label }) => (
+  <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.15em] px-5 pt-6 pb-2">{label}</p>
+);
+
+const Divider = () => <div className="h-px bg-outline-variant/10 mx-5" />;
+
+const Toggle = ({ on, onChange }) => (
+  <button
+    onClick={() => onChange(!on)}
+    className={`w-12 h-6 rounded-full relative transition-colors duration-200 flex-shrink-0 ${on ? 'bg-primary' : 'bg-white/10'}`}
+  >
+    <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${on ? 'left-6' : 'left-0.5'}`} />
+  </button>
+);
 
 export default function Settings() {
   const navigate = useNavigate();
-  const { user, theme, toggleTheme, logout } = useWalletStore();
-  const [showTransfer, setShowTransfer] = useState(false);
-  const [transferData, setTransferData] = useState('');
+  const { user, logout } = useWalletStore();
+  const [merchantMode, setMerchantMode] = useState(true);
+  const [darkMode] = useState(true); // Always dark
+  const [pushAlerts, setPushAlerts] = useState(true);
+  const [showWipe, setShowWipe] = useState(false);
+  const [wiping, setWiping] = useState(false);
+
   const initial = (user?.name || 'U')[0].toUpperCase();
 
-  const doLogout = () => { clearToken(); logout(); navigate('/', { replace: true }); };
-  const doDelete = async () => { if (confirm('Delete wallet and wipe all keys? This cannot be undone.')) { clearToken(); await wipeKeys(); logout(); navigate('/', { replace: true }); } };
+  const doLogout = () => {
+    localStorage.removeItem('pp_token');
+    logout();
+    navigate('/login', { replace: true });
+  };
 
-  const prepareTransfer = async () => {
-    const keys = await getKeys();
-    const profile = await getUserProfile();
-    const data = JSON.stringify({
-      t: 'pp_transfer',
-      k: { pub: keys.pubKey, enc: keys.encPrivKey, iv: keys.iv, salt: keys.salt },
-      p: { name: profile.name, phone: profile.phone, userId: profile.userId }
-    });
-    setTransferData(data);
-    setShowTransfer(true);
+  const doWipe = async () => {
+    setWiping(true);
+    await wipeKeys();
+    localStorage.clear();
+    logout();
+    navigate('/', { replace: true });
+  };
+
+  const exportCSV = async () => {
+    try {
+      const txns = await getAllTxns();
+      const rows = [['ID','Amount','Status','Type','Timestamp']];
+      txns.forEach(t => rows.push([t.id, (t.amount/100).toFixed(2), t.status, t.type || 'p2p', new Date(t.ts || t.created_at || Date.now()).toISOString()]));
+      const csv = rows.map(r => r.join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+      a.download = `pocketpay-txns-${Date.now()}.csv`;
+      a.click();
+    } catch { alert('No transactions found.'); }
   };
 
   return (
-    <div className="scr" style={{ display: 'flex' }}>
-      <div className="tnav"><div className="bk" onClick={() => navigate(-1)}><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></div><div className="ntl">Settings</div></div>
-      <div className="sb" style={{ padding: '14px 18px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0 20px' }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'linear-gradient(135deg,var(--accent),var(--accent2))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, color: '#fff' }}>{initial}</div>
-          <div><div style={{ fontSize: 16, fontWeight: 800 }}>{user?.name || 'User'}</div><div style={{ fontSize: 12, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 4 }}>+91 {user?.phone || '98765 43210'} · KYC <svg width="12" height="12" fill="none" stroke="var(--green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div></div>
-        </div>
-        {/* Security */}
-        <div className="sl">Security</div>
-        {[
-          { icon: <><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>, bg: 'var(--acbg)', stroke: 'var(--accent2)', name: 'Change PIN', desc: 'Update your 6-digit unlock code', arrow: true },
-          { icon: <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></>, bg: 'var(--abg)', stroke: 'var(--amber)', name: 'Recovery phrase', desc: 'View your 12-word backup', arrow: true, onClick: () => navigate('/recovery-phrase', { state: { name: user?.name, phone: user?.phone, email: user?.email, pin: '000000', viewOnly: true } }) },
-          { icon: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>, bg: 'var(--gbg)', stroke: 'var(--green)', name: 'Transfer to Device', desc: 'Login on phone using QR', arrow: true, onClick: prepareTransfer },
-          { icon: <><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></>, bg: 'var(--bbg)', stroke: 'var(--blue)', name: 'Device management', desc: '1 device registered', arrow: true },
-        ].map((s, i) => (
-          <div key={i} className="si" onClick={s.onClick}>
-            <div className="sii" style={{ background: s.bg }}><svg style={{ stroke: s.stroke }} viewBox="0 0 24 24">{s.icon}</svg></div>
-            <div className="sin"><div className="sin-n">{s.name}</div><div className="sin-d">{s.desc}</div></div>
-            {s.arrow && <svg width="14" height="14" fill="none" stroke="var(--text3)" strokeWidth="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>}
-            {s.toggle && <div className="tgl on" onClick={e => { e.stopPropagation(); e.currentTarget.classList.toggle('on'); }}><div className="tglb" /></div>}
+    <main className="min-h-screen pb-24 w-full">
+      {/* Header */}
+      <header className="fixed top-14 lg:top-0 right-0 lg:left-64 left-0 h-16 lg:h-20 bg-background/80 backdrop-blur-xl border-b border-outline-variant/15 px-4 lg:px-10 flex items-center gap-4 z-30">
+        <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/5">
+          <span className="material-symbols-outlined text-slate-400">arrow_back</span>
+        </button>
+        <h2 className="text-xl font-bold text-white tracking-tight">Settings</h2>
+      </header>
+
+      <div className="pt-36 lg:pt-28 max-w-4xl mx-auto">
+        {/* Profile Card */}
+        <div className="mx-4 lg:mx-10 mb-6 bg-[#0d0d15]/60 backdrop-blur-xl rounded-2xl border-t border-l border-outline-variant/15 p-5 flex items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-container to-primary flex items-center justify-center text-white font-black text-2xl flex-shrink-0">
+            {initial}
           </div>
-        ))}
-        {/* Wallet */}
-        <div className="sl" style={{ marginTop: 10 }}>Wallet</div>
-        {[
-          { icon: <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></>, bg: 'var(--abg)', stroke: 'var(--amber)', name: 'Offline limits', desc: '₹500/txn · ₹2,000/day' },
-          { icon: <><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></>, bg: 'var(--acbg)', stroke: 'var(--accent2)', name: 'Merchant mode', desc: 'Accept at your store', toggle: true },
-          { icon: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>, bg: 'var(--gbg)', stroke: 'var(--green)', name: 'Export transactions', desc: 'Download as CSV' },
-        ].map((s, i) => (
-          <div key={i} className="si">
-            <div className="sii" style={{ background: s.bg }}><svg style={{ stroke: s.stroke }} viewBox="0 0 24 24">{s.icon}</svg></div>
-            <div className="sin"><div className="sin-n">{s.name}</div><div className="sin-d">{s.desc}</div></div>
-            {s.toggle ? <div className="tgl" onClick={e => { e.stopPropagation(); e.currentTarget.classList.toggle('on'); }}><div className="tglb" /></div> : <svg width="14" height="14" fill="none" stroke="var(--text3)" strokeWidth="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>}
+          <div className="flex-1 min-w-0">
+            <p className="text-lg font-black text-white">{user?.name || 'User'}</p>
+            <p className="text-sm text-slate-500">{user?.phone || '—'}</p>
+            <div className="flex items-center gap-1.5 mt-1">
+              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
+              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">KYC Verified</span>
+            </div>
           </div>
-        ))}
-        {/* Prefs */}
-        <div className="sl" style={{ marginTop: 10 }}>Preferences</div>
-        <div className="si" onClick={toggleTheme}>
-          <div className="sii" style={{ background: 'var(--surface2)' }}><svg style={{ stroke: 'var(--text2)' }} viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></div>
-          <div className="sin"><div className="sin-n">Appearance</div><div className="sin-d">{theme === 'dark' ? 'Dark mode' : 'Light mode'}</div></div>
-          <div className={`tgl ${theme === 'dark' ? 'on' : ''}`}><div className="tglb" /></div>
+          <button
+            onClick={() => navigate('/profile')}
+            className="px-4 py-2 rounded-xl bg-white/5 border border-outline-variant/15 text-sm font-bold text-white hover:bg-white/10 transition-colors flex-shrink-0"
+          >
+            Edit Profile
+          </button>
         </div>
-        <div className="si">
-          <div className="sii" style={{ background: 'var(--surface2)' }}><svg style={{ stroke: 'var(--text2)' }} viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
-          <div className="sin"><div className="sin-n">Push notifications</div><div className="sin-d">Sync alerts, payment updates</div></div>
-          <div className="tgl on" onClick={e => { e.stopPropagation(); e.currentTarget.classList.toggle('on'); }}><div className="tglb" /></div>
+
+        {/* Settings content — 2-column on desktop */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 px-4 lg:px-10">
+          {/* Left column */}
+          <div className="space-y-4">
+            {/* Security */}
+            <div className="bg-[#0d0d15]/60 backdrop-blur-xl rounded-2xl border-t border-l border-outline-variant/15 overflow-hidden">
+              <SectionHeader label="Security" />
+              <SettingRow icon="lock" iconColor="text-primary" iconBg="bg-primary/10" label="Change PIN" desc="Update your 6-digit unlock code" onClick={() => alert('PIN change coming soon')} />
+              <Divider />
+              <SettingRow icon="key" iconColor="text-tertiary" iconBg="bg-tertiary/10" label="Recovery Phrase" desc="View your 12-word backup" onClick={() => navigate('/recovery-phrase')} />
+              <Divider />
+              <SettingRow icon="qr_code_scanner" iconColor="text-emerald-400" iconBg="bg-emerald-500/10" label="Transfer to Device" desc="Login on phone using QR" onClick={() => navigate('/scan')} />
+              <Divider />
+              <SettingRow icon="devices" iconColor="text-blue-400" iconBg="bg-blue-500/10" label="Device Management" desc="1 device registered" onClick={() => alert('Device management coming soon')} />
+            </div>
+
+            {/* Wallet */}
+            <div className="bg-[#0d0d15]/60 backdrop-blur-xl rounded-2xl border-t border-l border-outline-variant/15 overflow-hidden">
+              <SectionHeader label="Wallet" />
+              <SettingRow
+                icon="warning"
+                iconColor="text-tertiary"
+                iconBg="bg-tertiary/10"
+                label="Offline Limits"
+                desc="₹500/txn · ₹2,000/day"
+                onClick={() => alert('Offline limit configuration coming soon')}
+              />
+              <Divider />
+              <SettingRow
+                icon="storefront"
+                iconColor="text-primary"
+                iconBg="bg-primary/10"
+                label="Merchant Mode"
+                desc="Enable point-of-sale features"
+                onClick={() => setMerchantMode(m => !m)}
+                right={<Toggle on={merchantMode} onChange={setMerchantMode} />}
+              />
+              <Divider />
+              <SettingRow icon="download" iconColor="text-emerald-400" iconBg="bg-emerald-500/10" label="Export Transactions" desc="Download as CSV" onClick={exportCSV} />
+            </div>
+          </div>
+
+          {/* Right column */}
+          <div className="space-y-4">
+            {/* Preferences */}
+            <div className="bg-[#0d0d15]/60 backdrop-blur-xl rounded-2xl border-t border-l border-outline-variant/15 overflow-hidden">
+              <SectionHeader label="Preferences" />
+              <SettingRow
+                icon="dark_mode"
+                iconColor="text-slate-300"
+                iconBg="bg-slate-500/10"
+                label="Dark Mode"
+                desc="Always on — Midnight Vault"
+                onClick={() => {}}
+                right={<Toggle on={darkMode} onChange={() => {}} />}
+              />
+              <Divider />
+              <SettingRow
+                icon="notifications"
+                iconColor="text-primary"
+                iconBg="bg-primary/10"
+                label="Push Alerts"
+                desc="Payment confirmations & sync"
+                onClick={() => setPushAlerts(a => !a)}
+                right={<Toggle on={pushAlerts} onChange={setPushAlerts} />}
+              />
+              <Divider />
+              <SettingRow icon="sync" iconColor="text-blue-400" iconBg="bg-blue-500/10" label="Background Sync" desc="Auto-sync when online" onClick={() => navigate('/sync')} />
+            </div>
+
+            {/* Vault Protection card */}
+            <div className="bg-[#0d0d15]/60 backdrop-blur-xl rounded-2xl border-t border-l border-outline-variant/15 p-5 flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl bg-tertiary/10 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-tertiary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>security</span>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-black text-white mb-1">Vault Protection</p>
+                <p className="text-xs text-slate-500 leading-relaxed mb-3">
+                  Your wallet keys are stored in IndexedDB with AES-256-GCM encryption. The private key never leaves your device.
+                </p>
+                <button className="text-xs font-bold text-tertiary uppercase tracking-widest hover:underline">
+                  Learn More
+                </button>
+              </div>
+            </div>
+
+            {/* About */}
+            <div className="bg-[#0d0d15]/60 backdrop-blur-xl rounded-2xl border-t border-l border-outline-variant/15 overflow-hidden">
+              <SectionHeader label="About" />
+              <SettingRow icon="info" iconColor="text-slate-400" iconBg="bg-slate-500/10" label="Version" desc="PocketPay v1.0.0 · Midnight Vault" onClick={() => {}} right={<span className="text-xs text-slate-600 font-mono">v1.0.0</span>} />
+              <Divider />
+              <SettingRow icon="code" iconColor="text-slate-400" iconBg="bg-slate-500/10" label="Open Source" desc="Ed25519 · AES-256-GCM · IndexedDB" onClick={() => {}} />
+            </div>
+          </div>
         </div>
-        {/* Danger */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16, paddingBottom: 28 }}>
-          <button className="btn btn-s" onClick={doLogout}>Log out</button>
-          <button className="btn btn-d" onClick={doDelete}>Delete wallet & wipe keys</button>
+
+        {/* Danger zone */}
+        <div className="grid grid-cols-2 gap-4 px-4 lg:px-10 mt-6">
+          <button onClick={doLogout} className="py-4 rounded-2xl bg-white/5 border border-outline-variant/15 text-white font-black hover:bg-white/10 active:scale-[0.98] transition-all">
+            Log Out
+          </button>
+          <button onClick={() => setShowWipe(true)} className="py-4 rounded-2xl bg-error/10 border border-error/20 text-error font-black hover:bg-error/20 active:scale-[0.98] transition-all">
+            Delete & Wipe Keys
+          </button>
         </div>
       </div>
 
-      {/* Transfer Modal */}
-      <div className={`mover ${showTransfer ? 'show' : ''}`}>
-        <div className="msheet" style={{ minHeight: '60vh' }}>
-          <div className="mhandle" onClick={() => setShowTransfer(false)} />
-          <div style={{ padding: '0 20px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8, textAlign: 'center' }}>Link New Device</div>
-            <div style={{ fontSize: 13, color: 'var(--text2)', textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
-              Scan this QR with the <strong>PocketPay app</strong> on your phone's login screen to sync your account instantly.
+      {/* Wipe Confirmation Modal */}
+      {showWipe && (
+        <div className="fixed inset-0 bg-background/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-6">
+          <div className="w-full max-w-sm">
+            <div className="w-16 h-16 rounded-full bg-error/10 flex items-center justify-center mx-auto mb-6">
+              <span className="material-symbols-outlined text-error text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>delete_forever</span>
             </div>
-            
-            <div className="qbox" style={{ background: '#fff', padding: 16, borderRadius: 16, boxShadow: '0 10px 30px rgba(0,0,0,.15)' }}>
-              <QRCodeSVG value={transferData} size={200} level="M" />
+            <h3 className="text-2xl font-black text-white text-center mb-3">Delete Wallet?</h3>
+            <p className="text-slate-400 text-sm text-center leading-relaxed mb-8">
+              This will permanently erase your keys from this device. You will need your 12-word recovery phrase to restore.
+              <strong className="text-error"> This cannot be undone.</strong>
+            </p>
+            <div className="space-y-3">
+              <button onClick={doWipe} disabled={wiping}
+                className="w-full py-4 rounded-2xl bg-error text-white font-black disabled:opacity-50 active:scale-[0.98] transition-all">
+                {wiping ? 'Wiping...' : 'Yes, Delete Everything'}
+              </button>
+              <button onClick={() => setShowWipe(false)}
+                className="w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-white font-bold">
+                Cancel
+              </button>
             </div>
-
-            <div style={{ marginTop: 24, padding: 14, background: 'var(--abg)', borderRadius: 12, border: '1px solid rgba(253,203,110,.3)' }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--amber)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                 <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> SECURITY WARNING
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.4 }}>
-                This QR contains your encrypted private key. Only share this with your own trusted devices. Never send a screenshot of this to anyone.
-              </div>
-            </div>
-
-            <button className="btn btn-p" style={{ marginTop: 24 }} onClick={() => setShowTransfer(false)}>Done</button>
           </div>
         </div>
-      </div>
-    </div>
+      )}
+    </main>
   );
 }

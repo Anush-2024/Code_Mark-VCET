@@ -2,22 +2,66 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWalletStore } from '../store/walletStore';
 import { getAllTxns } from '../services/storageService';
+import { runSync } from '../services/syncService';
+import { hasToken } from '../services/apiService';
 
 const fmt = (p) => '₹' + (p / 100).toLocaleString('en-IN');
 
-const IconArrowUpRight = () => <svg viewBox="0 0 24 24" style={{width:18,height:18,stroke:'var(--red)',strokeWidth:2,fill:'none',strokeLinecap:'round',strokeLinejoin:'round'}}><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>;
-const IconArrowDownLeft = () => <svg viewBox="0 0 24 24" style={{width:18,height:18,stroke:'var(--green)',strokeWidth:2,fill:'none',strokeLinecap:'round',strokeLinejoin:'round'}}><line x1="17" y1="7" x2="7" y2="17"/><polyline points="17 17 7 17 7 7"/></svg>;
-
 export default function Home() {
   const navigate = useNavigate();
-  const { user, confirmed_bal, locked_bal, unconfirmed_received, isOnline, loadWalletState } = useWalletStore();
+  const { user, confirmed_bal, locked_bal, unconfirmed_received, isOnline, loadWalletState, updateBalance } = useWalletStore();
   const [txns, setTxns] = useState([]);
   const [stats, setStats] = useState({ sent: 0, received: 0, spendTotal: 0, bars: [5,5,5,5,5,5,5] });
 
-  useEffect(() => { loadWalletState(); loadTxns(); }, []);
+  const refresh = async () => { await loadWalletState(); await loadTxns(); };
+
+  // Trigger a sync + wallet update when Home mounts (if online)
+  const syncAndRefresh = async () => {
+    if (!navigator.onLine || !hasToken()) return;
+    try {
+      const result = await runSync();
+      if (result.serverWallet) {
+        await updateBalance({
+          confirmed_bal: result.serverWallet.confirmed_bal,
+          locked_bal: result.serverWallet.locked_bal || 0,
+          unconfirmed_received: 0,
+        });
+      }
+      await loadWalletState();
+      await loadTxns();
+      if (result.confirmed + result.failed > 0) {
+        window.dispatchEvent(new CustomEvent('pp-sync-complete', { detail: result }));
+      }
+    } catch (e) {
+      console.log('[Home] sync-on-mount skipped:', e.message);
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+    syncAndRefresh(); // Sync pending txns when dashboard loads
+    // Refresh when page becomes visible, focused, or after sync/payment events
+    const onVisChange = () => { if (document.visibilityState === 'visible') { refresh(); syncAndRefresh(); } };
+    const onFocus = () => refresh();
+    const onSync = () => refresh();
+    const onNotif = () => refresh();
+    document.addEventListener('visibilitychange', onVisChange);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('pp-sync-complete', onSync);
+    window.addEventListener('pp-notification', onNotif);
+    // Periodic refresh every 5s to catch any missed updates
+    const interval = setInterval(refresh, 5000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisChange);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('pp-sync-complete', onSync);
+      window.removeEventListener('pp-notification', onNotif);
+      clearInterval(interval);
+    };
+  }, []);
   const loadTxns = async () => { 
     const all = await getAllTxns(); 
-    setTxns([...all].sort((a, b) => b.created_at - a.created_at).slice(0, 5)); 
+    setTxns([...all].sort((a, b) => b.created_at - a.created_at).slice(0, 4)); 
     
     // Calculate stats
     const now = new Date();
@@ -47,97 +91,197 @@ export default function Home() {
   };
 
   const spendable = confirmed_bal - locked_bal;
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning,' : hour < 17 ? 'Good afternoon,' : 'Good evening,';
   const initial = (user?.name || 'U')[0].toUpperCase();
   
-  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const dayNames = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
   const dayLabels = Array.from({length: 7}).map((_, i) => {
-    if (i === 6) return 'Today';
+    if (i === 6) return 'TODAY';
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
     return dayNames[d.getDay()];
   });
 
   return (
-    <div className="scr">
-      <div className="sb" style={{ padding: '24px 28px' }}>
-        {/* Offline banner */}
-        {!isOnline && (
-          <div style={{ background: 'var(--abg)', border: '1px solid rgba(253,203,110,.15)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--amber)', fontWeight: 600, borderRadius: 'var(--r2)', marginBottom: 16 }}>
-            <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            Offline mode — transactions limited to ₹500 per transfer
-          </div>
-        )}
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div><div style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 600 }}>{greeting}</div><div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-.01em' }}>{user?.name || 'User'}</div></div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <div className="nact" onClick={() => navigate('/notifications')} style={{ position: 'relative' }}>
-              <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-              <div style={{ position: 'absolute', top: 7, right: 7, width: 7, height: 7, background: 'var(--red)', borderRadius: '50%', border: '1.5px solid var(--bg2)' }} />
-            </div>
-            <div onClick={() => navigate('/profile')} style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,var(--accent),var(--accent2))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', cursor: 'pointer' }}>{initial}</div>
-          </div>
-        </div>
-        {/* Balance card */}
-        <div className="bcard">
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'rgba(255,255,255,.65)', marginBottom: 5 }}>TOTAL BALANCE</div>
-          <div style={{ fontSize: 38, fontWeight: 300, color: '#fff', letterSpacing: '-.03em', marginBottom: 2 }}>
-            <span style={{ fontSize: 18, fontWeight: 600 }}>₹</span><span>{(confirmed_bal / 100).toLocaleString('en-IN')}</span><span style={{ fontSize: 18, fontWeight: 600 }}>.00</span>
-          </div>
-          <div style={{ position: 'absolute', top: 22, right: 22, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? 'var(--green)' : 'var(--amber)', boxShadow: `0 0 8px ${isOnline ? 'var(--green)' : 'var(--amber)'}` }} />
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,.8)', fontWeight: 700 }}>{isOnline ? 'Online' : 'Offline'}</div>
-          </div>
-          <div style={{ display: 'flex', gap: 20, marginTop: 18 }}>
-            <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,.6)', fontWeight: 600 }}>SPENDABLE</div><div style={{ fontSize: 14, color: '#fff', fontWeight: 700 }}>{fmt(spendable)}</div></div>
-            <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,.6)', fontWeight: 600 }}>LOCKED</div><div style={{ fontSize: 14, color: 'rgba(253,203,110,.9)', fontWeight: 700 }}>{fmt(locked_bal)}</div></div>
-            <div><div style={{ fontSize: 10, color: 'rgba(255,255,255,.6)', fontWeight: 600 }}>UNCONFIRMED IN</div><div style={{ fontSize: 14, color: 'rgba(0,184,148,.9)', fontWeight: 700 }}>{fmt(unconfirmed_received || 0)}</div></div>
-          </div>
-        </div>
-        {/* Quick actions */}
-        <div className="agrid">
-          <div className="ab" onClick={() => navigate('/send')}><div className="ai t"><svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></div><div className="al">Send</div></div>
-          <div className="ab" onClick={() => navigate('/receive')}><div className="ai t"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div><div className="al">Receive</div></div>
-          <div className="ab" onClick={() => navigate('/add-money')}><div className="ai"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></div><div className="al">Add</div></div>
-          <div className="ab" onClick={() => navigate('/withdraw')}><div className="ai"><svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div className="al">Withdraw</div></div>
-          <div className="ab" onClick={() => navigate('/history')}><div className="ai"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div className="al">History</div></div>
-        </div>
-        {/* Quick stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
-          <div className="card" style={{ padding: '15px 16px' }}><div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, marginBottom: 3 }}>SENT THIS MONTH</div><div style={{ fontSize: 22, fontWeight: 800, color: 'var(--red)' }}>{fmt(stats.sent)}</div></div>
-          <div className="card" style={{ padding: '15px 16px' }}><div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, marginBottom: 3 }}>RECEIVED</div><div style={{ fontSize: 22, fontWeight: 800, color: 'var(--green)' }}>{fmt(stats.received)}</div></div>
-        </div>
-        {/* Spend chart */}
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)' }}>SPENDING — LAST 7 DAYS</div>
-            <div style={{ fontSize: 16, fontWeight: 800 }}>{fmt(stats.spendTotal)}</div>
-          </div>
-          <div className="mbars">
-            {stats.bars.map((h, i) => <div key={i} className="mbar" style={{ height: `${h}%`, background: i === 6 ? 'var(--accent)' : 'var(--surface2)' }} />)}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
-            {dayLabels.map((d, i) => <span key={i} style={{ fontSize: 10, color: i === 6 ? 'var(--accent2)' : 'var(--text3)', fontWeight: i === 6 ? 700 : 600 }}>{d}</span>)}
-          </div>
-        </div>
-        {/* Recent txns */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div className="sl" style={{ marginBottom: 0 }}>Recent transactions</div>
-          <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 700, cursor: 'pointer' }} onClick={() => navigate('/history')}>View all</span>
-        </div>
-        {txns.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 28, color: 'var(--text3)', fontSize: 13 }}>No transactions yet. Send or receive to get started.</div>
-        ) : txns.map(tx => (
-          <div key={tx.id} className="ti" onClick={() => navigate(`/history/${tx.id}`)}>
-            <div className="tic" style={{ background: tx.type === 'sent' ? 'var(--rbg)' : 'var(--gbg)' }}>{tx.type === 'sent' ? <IconArrowUpRight /> : <IconArrowDownLeft />}</div>
-            <div className="tin"><div className="tin-n">{tx.recipientName || 'Payment'}</div><div className="tin-m">{new Date(tx.created_at * 1000).toLocaleTimeString()} · {tx.status}</div></div>
-            <div className="tia"><div className="tia-a" style={{ color: tx.type === 'sent' ? 'var(--red)' : 'var(--green)' }}>{tx.type === 'sent' ? '-' : '+'}{fmt(tx.amount)}</div></div>
-          </div>
-        ))}
-        <div style={{ height: 20 }} />
-      </div>
+    <main className="min-h-screen pb-20 w-full">
+    {/* Top App Bar */}
+    <header className="fixed top-14 lg:top-0 right-0 lg:left-64 left-0 h-16 lg:h-20 bg-background/80 backdrop-blur-xl border-b border-outline-variant/15 px-4 lg:px-10 flex justify-between items-center z-30">
+    <h2 className="text-xl font-bold text-white font-headline tracking-tight">Dashboard Overview</h2>
+    <div className="flex items-center gap-6">
+    <div className="relative group">
+    <button className="hover:bg-white/5 rounded-full p-2 transition-colors relative" onClick={() => navigate('/notifications')}>
+    <span className="material-symbols-outlined text-slate-400 group-hover:text-primary">notifications</span>
+    <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full border-2 border-background"></span>
+    </button>
     </div>
+    <button className="hover:bg-white/5 rounded-full p-2 transition-colors" onClick={() => navigate('/settings')}>
+    <span className="material-symbols-outlined text-slate-400 hover:text-primary">settings</span>
+    </button>
+    <div className="h-8 w-[1px] bg-outline-variant/20"></div>
+    <div className="flex items-center gap-3">
+    <span className="text-sm font-medium text-on-surface-variant">Hello, {user?.name || 'User'}</span>
+    <div onClick={() => navigate('/profile')} className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-container to-primary flex items-center justify-center text-white font-bold cursor-pointer">{initial}</div>
+    </div>
+    </div>
+    </header>
+
+    <div className="pt-36 lg:pt-28 px-4 lg:px-10 max-w-7xl mx-auto space-y-8">
+    {/* Offline Banner */}
+    {!isOnline && (
+      <div className="bg-tertiary/10 border-l-4 border-tertiary p-4 rounded-r-xl flex items-center gap-4">
+      <span className="material-symbols-outlined text-tertiary" style={{fontVariationSettings: "'FILL' 1"}}>warning</span>
+      <div>
+      <p className="text-sm font-bold text-tertiary-fixed-dim uppercase tracking-wider">Offline Mode Active</p>
+      <p className="text-xs text-on-surface-variant">Your transaction data is being synced locally. Connect to internet to update real-time vault status.</p>
+      </div>
+      </div>
+    )}
+
+    {/* Hero Section: Balance & Stats */}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="lg:col-span-2 bg-[#0d0d15]/60 backdrop-blur-xl rounded-2xl p-8 relative overflow-hidden flex flex-col justify-between min-h-[320px] shadow-[0_40px_64px_-12px_rgba(0,0,0,0.4)] border-t border-l border-outline-variant/15">
+    <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 blur-[100px] rounded-full -mr-20 -mt-20"></div>
+    <div className="relative z-10">
+    <div className="flex justify-between items-start">
+    <div>
+    <p className="label-md uppercase tracking-[0.2em] text-slate-500 font-bold text-xs mb-2">Total Balance</p>
+    <h3 className="text-6xl font-black tracking-tighter text-white font-display">
+    <span className="text-primary-fixed-dim opacity-50 text-4xl mr-1">₹</span>{(confirmed_bal / 100).toLocaleString('en-IN')}<span className="text-3xl font-medium opacity-70">.00</span>
+    </h3>
+    </div>
+    <div className="bg-primary/10 px-3 py-1 rounded-full border border-primary/20 flex items-center gap-2">
+    <span className={`w-2 h-2 ${isOnline ? 'bg-primary animate-pulse' : 'bg-tertiary'} rounded-full`}></span>
+    <span className={`text-[10px] font-bold ${isOnline ? 'text-primary' : 'text-tertiary'} uppercase tracking-widest`}>{isOnline ? 'Online' : 'Offline'}</span>
+    </div>
+    </div>
+    <div className="grid grid-cols-3 gap-8 mt-12">
+    <div>
+    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Spendable</p>
+    <p className="text-xl font-bold text-white">{fmt(spendable)}</p>
+    </div>
+    <div>
+    <p className="text-[10px] font-bold text-tertiary uppercase tracking-widest mb-1">Locked</p>
+    <p className="text-xl font-bold text-tertiary">{fmt(locked_bal)}</p>
+    </div>
+    <div>
+    <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-1">Unconfirmed</p>
+    <p className="text-xl font-bold text-emerald-500">{fmt(unconfirmed_received || 0)}</p>
+    </div>
+    </div>
+    </div>
+    <div className="relative z-10 flex gap-4 mt-8">
+    <button onClick={() => navigate('/send')} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-primary-container to-primary text-white font-bold text-sm tracking-wide shadow-lg shadow-primary/20 active:scale-[0.98] transition-transform">
+        Send Assets
+    </button>
+    <button onClick={() => navigate('/receive')} className="flex-1 py-3 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm tracking-wide hover:bg-white/10 active:scale-[0.98] transition-transform">
+        Generate Invoice
+    </button>
+    </div>
+    </div>
+
+    <div className="flex flex-col gap-6">
+    <div className="bg-[#0d0d15]/60 backdrop-blur-xl border-t border-l border-outline-variant/15 rounded-2xl p-6 flex flex-col justify-between h-1/2">
+    <div>
+    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Sent This Month</p>
+    <h4 className="text-3xl font-bold text-error">{fmt(stats.sent)}</h4>
+    </div>
+    <div className="flex items-center gap-2 text-error/60 text-xs font-medium">
+    <span className="material-symbols-outlined text-sm">trending_up</span>
+    <span>Spending trend</span>
+    </div>
+    </div>
+    <div className="bg-[#0d0d15]/60 backdrop-blur-xl border-t border-l border-outline-variant/15 rounded-2xl p-6 flex flex-col justify-between h-1/2">
+    <div>
+    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Received</p>
+    <h4 className="text-3xl font-bold text-emerald-400">{fmt(stats.received)}</h4>
+    </div>
+    <div className="flex items-center gap-2 text-emerald-400/60 text-xs font-medium">
+    <span className="material-symbols-outlined text-sm">trending_down</span>
+    <span>Inflow trend</span>
+    </div>
+    </div>
+    </div>
+    </div>
+
+    {/* Quick Actions Toolbar */}
+    <div className="flex items-center justify-between gap-4 overflow-x-auto pb-2 scrollbar-hide">
+    <button onClick={() => navigate('/send')} className="flex flex-col items-center gap-3 min-w-[100px] p-6 rounded-2xl bg-[#0d0d15]/60 backdrop-blur-xl border-t border-l border-outline-variant/15 hover:bg-primary-container/20 group transition-all">
+    <span className="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">send</span>
+    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-white">Send</span>
+    </button>
+    <button onClick={() => navigate('/receive')} className="flex flex-col items-center gap-3 min-w-[100px] p-6 rounded-2xl bg-[#0d0d15]/60 backdrop-blur-xl border-t border-l border-outline-variant/15 hover:bg-primary-container/20 group transition-all">
+    <span className="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">download</span>
+    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-white">Receive</span>
+    </button>
+    <button onClick={() => navigate('/add-money')} className="flex flex-col items-center gap-3 min-w-[100px] p-6 rounded-2xl bg-[#0d0d15]/60 backdrop-blur-xl border-t border-l border-outline-variant/15 hover:bg-primary-container/20 group transition-all">
+    <span className="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">add_circle</span>
+    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-white">Add</span>
+    </button>
+    <button onClick={() => navigate('/withdraw')} className="flex flex-col items-center gap-3 min-w-[100px] p-6 rounded-2xl bg-[#0d0d15]/60 backdrop-blur-xl border-t border-l border-outline-variant/15 hover:bg-primary-container/20 group transition-all">
+    <span className="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">account_balance_wallet</span>
+    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-white">Withdraw</span>
+    </button>
+    <button onClick={() => navigate('/history')} className="flex flex-col items-center gap-3 min-w-[100px] p-6 rounded-2xl bg-[#0d0d15]/60 backdrop-blur-xl border-t border-l border-outline-variant/15 hover:bg-primary-container/20 group transition-all">
+    <span className="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">list_alt</span>
+    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-white">History</span>
+    </button>
+    </div>
+
+    {/* Bento Content Grid */}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="lg:col-span-2 bg-[#0d0d15]/60 backdrop-blur-xl border-t border-l border-outline-variant/15 rounded-2xl p-8">
+    <div className="flex justify-between items-end mb-10">
+    <div>
+    <h5 className="text-white font-bold text-lg mb-1">Weekly Activity</h5>
+    <p className="text-xs text-slate-500">Transaction volume analysis</p>
+    </div>
+    <div className="flex gap-2">
+    <span className="px-3 py-1 rounded-full bg-white/5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border border-white/5">Weekly</span>
+    <span className="px-3 py-1 rounded-full bg-primary/10 text-[10px] font-bold uppercase tracking-wider text-primary border border-primary/10">Daily</span>
+    </div>
+    </div>
+    <div className="flex items-end justify-between h-48 gap-4 px-2">
+    {stats.bars.map((h, i) => (
+      <div key={i} className="flex flex-col items-center gap-4 flex-1 h-full justify-end">
+      <div className={`w-full rounded-t-lg transition-all ${i === 6 ? 'bg-gradient-to-t from-primary-container to-primary shadow-[0_0_20px_rgba(108,92,231,0.3)]' : 'bg-white/5 hover:bg-white/10'}`} style={{height: `${h}%`}}></div>
+      <span className={`text-[10px] font-bold ${i === 6 ? 'text-primary' : 'text-slate-600'}`}>{dayLabels[i]}</span>
+      </div>
+    ))}
+    </div>
+    </div>
+
+    {/* Recent Transactions */}
+    <div className="bg-[#0d0d15]/60 backdrop-blur-xl border-t border-l border-outline-variant/15 rounded-2xl p-8 flex flex-col">
+    <div className="flex justify-between items-center mb-8 gap-4">
+    <h5 className="text-white font-bold text-lg truncate">Transactions</h5>
+    <span onClick={() => navigate('/history')} className="text-[10px] font-bold uppercase tracking-widest text-primary hover:underline cursor-pointer flex-shrink-0">View All</span>
+    </div>
+    <div className="space-y-6 flex-1">
+    {txns.length === 0 ? (
+      <div className="text-center text-slate-500 text-sm py-4">No transactions yet</div>
+    ) : txns.map(tx => (
+      <div key={tx.id} onClick={() => navigate(`/history/${tx.id}`)} className="flex items-center gap-4 cursor-pointer hover:bg-white/5 p-2 -m-2 rounded-xl transition-colors">
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tx.type === 'sent' ? 'bg-error/10 text-error' : 'bg-emerald-500/10 text-emerald-500'}`}>
+      <span className="material-symbols-outlined text-xl">{tx.type === 'sent' ? 'call_made' : 'call_received'}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+      <p className="text-sm font-bold text-white truncate">{tx.recipientName || 'Payment'}</p>
+      <p className="text-xs text-slate-500">{new Date(tx.created_at * 1000).toLocaleTimeString()}</p>
+      </div>
+      <div className="text-right">
+      <p className={`text-sm font-bold ${tx.type === 'sent' ? 'text-white' : 'text-emerald-400'}`}>
+        {tx.type === 'sent' ? '-' : '+'}{fmt(tx.amount)}
+      </p>
+      <p className="text-[10px] text-slate-600 uppercase">{tx.status}</p>
+      </div>
+      </div>
+    ))}
+    </div>
+    <button onClick={() => navigate('/history')} className="w-full mt-8 py-3 rounded-xl border border-outline-variant/20 text-slate-400 font-bold text-xs uppercase tracking-widest hover:bg-white/5 transition-colors">
+        Full History
+    </button>
+    </div>
+    </div>
+    </div>
+    </main>
   );
 }

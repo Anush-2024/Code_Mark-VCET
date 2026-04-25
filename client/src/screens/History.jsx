@@ -4,62 +4,138 @@ import { getAllTxns } from '../services/storageService';
 
 const fmt = (p) => '₹' + (p / 100).toLocaleString('en-IN');
 
+const FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'sent', label: 'Sent' },
+  { id: 'received', label: 'Received' },
+  { id: 'pending', label: 'Pending' },
+  { id: 'failed', label: 'Failed' },
+];
+
 export default function History() {
   const navigate = useNavigate();
   const [txns, setTxns] = useState([]);
   const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
 
-  useEffect(() => { loadTxns(); }, []);
-  const loadTxns = async () => { const all = await getAllTxns(); setTxns(all.sort((a, b) => b.created_at - a.created_at)); };
+  useEffect(() => {
+    loadTxns();
+    const onVisChange = () => { if (document.visibilityState === 'visible') loadTxns(); };
+    const onFocus = () => loadTxns();
+    document.addEventListener('visibilitychange', onVisChange);
+    window.addEventListener('focus', onFocus);
+    return () => { document.removeEventListener('visibilitychange', onVisChange); window.removeEventListener('focus', onFocus); };
+  }, []);
 
-  const filtered = filter === 'all' ? txns : txns.filter(t => {
-    if (filter === 'sent') return t.type === 'sent';
+  const loadTxns = async () => {
+    const all = await getAllTxns();
+    setTxns(all.sort((a, b) => b.created_at - a.created_at));
+  };
+
+  const filtered = txns.filter(t => {
+    if (filter === 'sent')     return t.type === 'sent';
     if (filter === 'received') return t.type === 'received';
-    if (filter === 'pending') return t.status === 'pending' || t.status === 'unconfirmed_received';
-    if (filter === 'failed') return t.status === 'failed';
+    if (filter === 'pending')  return t.status === 'pending' || t.status === 'unconfirmed_received';
+    if (filter === 'failed')   return t.status === 'failed';
     return true;
-  });
+  }).filter(t =>
+    !search || (t.recipientName || '').toLowerCase().includes(search.toLowerCase())
+  );
 
-  const filters = [
-    { id: 'all', label: 'All' }, { id: 'sent', label: 'Sent' }, { id: 'received', label: 'Received' },
-    { id: 'pending', label: 'Pending' }, { id: 'failed', label: 'Failed' }
-  ];
+  const statusColor = (status) => {
+    if (status === 'confirmed') return 'text-emerald-400';
+    if (status === 'failed')    return 'text-error';
+    return 'text-tertiary';
+  };
 
   return (
-    <div className="scr" style={{ display: 'flex' }}>
-      <div className="tnav">
-        <div className="bk" onClick={() => navigate(-1)}><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></div>
-        <div className="ntl">Transactions</div>
-        <div className="nact"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
-      </div>
-      <div className="sb">
-        <div className="seg" style={{ padding: '10px 18px' }}>
-          {filters.map(f => <div key={f.id} className={`st ${filter === f.id ? 'on' : ''}`} onClick={() => setFilter(f.id)}>{f.label}</div>)}
+    <main className="min-h-screen pb-20 w-full">
+      {/* Top Bar */}
+      <header className="fixed top-14 lg:top-0 right-0 lg:left-64 left-0 h-16 lg:h-20 bg-background/80 backdrop-blur-xl border-b border-outline-variant/15 px-4 lg:px-10 flex items-center justify-between z-30">
+        <h2 className="text-xl font-bold text-white tracking-tight">Transaction History</h2>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500">{filtered.length} records</span>
         </div>
-        <div style={{ padding: '0 18px' }}>
-          {filtered.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>No transactions found</div>
-          ) : filtered.map(tx => (
-            <div key={tx.id} className="ti" onClick={() => navigate(`/history/${tx.id}`)}>
-              <div className="tic" style={{ background: tx.type === 'sent' ? 'var(--rbg)' : 'var(--gbg)' }}>
-                {tx.type === 'sent' ? (
-                  <svg width="16" height="16" fill="none" stroke="var(--red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
-                ) : (
-                  <svg width="16" height="16" fill="none" stroke="var(--green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><line x1="17" y1="7" x2="7" y2="17"/><polyline points="17 17 7 17 7 7"/></svg>
-                )}
-              </div>
-              <div className="tin">
-                <div className="tin-n">{tx.recipientName || (tx.type === 'received' ? 'Received' : 'Sent')}</div>
-                <div className="tin-m">{new Date(tx.created_at * 1000).toLocaleDateString()} · {tx.status}</div>
-              </div>
-              <div className="tia">
-                <div className="tia-a" style={{ color: tx.type === 'sent' ? 'var(--red)' : 'var(--green)' }}>{tx.type === 'sent' ? '-' : '+'}{fmt(tx.amount)}</div>
-                <div className={`tia-s badge ${tx.status === 'confirmed' ? 'bg' : tx.status === 'failed' ? 'br' : 'ba'}`} style={{ display: 'inline', padding: '2px 6px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>{tx.status}</div>
-              </div>
-            </div>
+      </header>
+
+      <div className="pt-36 lg:pt-28 px-4 lg:px-10 max-w-5xl mx-auto space-y-6">
+        {/* Search */}
+        <div className="relative">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-600 text-xl">search</span>
+          <input
+            type="text"
+            placeholder="Search by name..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full bg-[#0d0d15]/60 backdrop-blur-xl border border-outline-variant/20 rounded-2xl pl-11 pr-4 py-4 text-white placeholder-slate-700 focus:outline-none focus:border-primary/40 focus:bg-[#0d0d15] transition-colors"
+          />
+        </div>
+
+        {/* Filter Pills */}
+        <div className="flex gap-2 flex-wrap">
+          {FILTERS.map(f => (
+            <button
+              key={f.id}
+              onClick={() => setFilter(f.id)}
+              className={`px-4 py-2 rounded-full text-[11px] font-bold uppercase tracking-widest transition-all ${
+                filter === f.id
+                  ? 'bg-primary/20 text-primary border border-primary/30'
+                  : 'bg-white/5 text-slate-500 border border-white/5 hover:bg-white/10 hover:text-slate-300'
+              }`}
+            >
+              {f.label}
+            </button>
           ))}
         </div>
+
+        {/* Transaction List */}
+        <div className="bg-[#0d0d15]/60 backdrop-blur-xl rounded-2xl border-t border-l border-outline-variant/15 overflow-hidden">
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <span className="material-symbols-outlined text-5xl text-slate-700">receipt_long</span>
+              <p className="text-slate-500 text-sm">No transactions found</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-outline-variant/10">
+              {filtered.map(tx => (
+                <div
+                  key={tx.id}
+                  onClick={() => navigate(`/history/${tx.id}`)}
+                  className="flex items-center gap-4 px-6 py-4 hover:bg-white/3 cursor-pointer transition-colors group"
+                >
+                  <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    tx.type === 'sent' ? 'bg-error/10' : 'bg-emerald-500/10'
+                  }`}>
+                    <span className={`material-symbols-outlined text-xl ${tx.type === 'sent' ? 'text-error' : 'text-emerald-400'}`}>
+                      {tx.type === 'sent' ? 'call_made' : 'call_received'}
+                    </span>
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-white truncate group-hover:text-primary-fixed-dim transition-colors">
+                      {tx.recipientName || (tx.type === 'received' ? 'Received' : 'Sent')}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {new Date(tx.created_at * 1000).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
+                      {' · '}
+                      <span className={`font-bold ${statusColor(tx.status)}`}>{tx.status}</span>
+                    </p>
+                  </div>
+
+                  <div className="text-right flex-shrink-0">
+                    <p className={`text-sm font-black ${tx.type === 'sent' ? 'text-white' : 'text-emerald-400'}`}>
+                      {tx.type === 'sent' ? '−' : '+'}{fmt(tx.amount)}
+                    </p>
+                    <p className="text-[10px] text-slate-600 font-mono uppercase mt-0.5">{tx.mode || 'offline'}</p>
+                  </div>
+
+                  <span className="material-symbols-outlined text-slate-700 group-hover:text-slate-500 text-base flex-shrink-0 transition-colors">chevron_right</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

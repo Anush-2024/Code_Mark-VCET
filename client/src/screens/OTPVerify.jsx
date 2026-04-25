@@ -55,33 +55,87 @@ export default function OTPVerify() {
   };
 
   return (
-    <div className="scr" style={{ display: 'flex' }}>
-      <div className="tnav">
-        <div className="bk" onClick={() => navigate(-1)}><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></div>
-        <div className="ntl">Verify OTP</div>
-      </div>
-      <div className="sb" style={{ padding: '20px 18px' }}>
-        <div style={{ textAlign: 'center', padding: '20px 0 28px' }}>
-          <div className="icon-hero" style={{ color: 'var(--accent)', marginBottom: 12, display: 'flex', justifyContent: 'center' }}>
-            <svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+    <div className="fixed inset-0 bg-background flex flex-col overflow-hidden">
+      {/* Ambient glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-48 bg-primary/8 blur-[100px] rounded-full pointer-events-none" />
+
+      {/* Header */}
+      <header className="flex items-center gap-3 px-6 pt-10 pb-4 flex-shrink-0 relative z-10">
+        <button onClick={() => navigate(-1)}
+          className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/5 transition-colors">
+          <span className="material-symbols-outlined text-slate-400">arrow_back</span>
+        </button>
+        <h2 className="text-lg font-bold text-white">Verify OTP</h2>
+      </header>
+
+      <div className="flex-1 flex flex-col px-6 relative z-10">
+        {/* Hero */}
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-5">
+            <span className="material-symbols-outlined text-primary text-3xl">smartphone</span>
           </div>
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Check your SMS</div>
-          <div style={{ fontSize: 13, color: 'var(--text2)' }}>Code sent to {phone || 'your number'}</div>
+          <h1 className="text-3xl font-black text-white tracking-tight mb-2">Check your SMS</h1>
+          <p className="text-slate-400 text-sm">Code sent to <span className="text-white font-bold">{phone || 'your number'}</span></p>
         </div>
-        <div className="orow" style={{ marginBottom: 18 }}>
+
+        {/* OTP inputs */}
+        <div className="flex gap-3 justify-center mb-6">
           {otp.map((d, i) => (
-            <input key={i} ref={refs[i]} className="ob" maxLength="1" type="tel" inputMode="numeric" value={d}
-              onChange={e => handleInput(e.target.value, i)} onKeyDown={e => handleKeyDown(e, i)} />
+            <input
+              key={i}
+              ref={refs[i]}
+              maxLength="1"
+              type="tel"
+              inputMode="numeric"
+              value={d}
+              onChange={e => handleInput(e.target.value, i)}
+              onKeyDown={e => handleKeyDown(e, i)}
+              className="w-12 h-14 bg-[#0d0d15]/80 border border-outline-variant/20 rounded-xl text-center text-xl font-bold text-white focus:outline-none focus:border-primary/60 focus:shadow-[0_0_0_3px_rgba(108,92,231,0.15)] transition-all"
+            />
           ))}
         </div>
-        {error && <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--red)', fontWeight: 600, marginBottom: 12 }}>{error}</div>}
-        <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text3)', marginBottom: 24 }}>
-          Didn't receive it? <span style={{ color: timer > 0 ? 'var(--text3)' : 'var(--accent)', fontWeight: 700, cursor: timer > 0 ? 'default' : 'pointer' }} onClick={resend}>
+
+        {/* Error */}
+        {error && (
+          <div className="bg-error/10 border border-error/20 rounded-xl px-4 py-3 mb-4 flex items-center gap-3 text-sm text-error font-medium">
+            <span className="material-symbols-outlined text-base flex-shrink-0">error</span>
+            {error}
+          </div>
+        )}
+
+        {/* Resend */}
+        <div className="text-center text-sm text-slate-500 mb-6">
+          Didn't receive it?{' '}
+          <span
+            onClick={resend}
+            className={`font-bold ${timer > 0 ? 'text-slate-600 cursor-default' : 'text-primary cursor-pointer hover:underline'}`}
+          >
             {timer > 0 ? `Resend (${timer}s)` : 'Resend now'}
           </span>
         </div>
-        <button className="btn btn-p" onClick={() => doVerify()} disabled={loading || otp.join('').length < 6}>
-          {loading ? 'Verifying...' : 'Verify & Continue'}
+
+        {/* Info */}
+        <div className="bg-white/3 border border-outline-variant/15 rounded-xl px-4 py-3 flex items-start gap-3 mb-6">
+          <span className="material-symbols-outlined text-slate-500 text-base flex-shrink-0 mt-0.5">info</span>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            For development/testing, use OTP <strong className="text-slate-300">123456</strong>.
+          </p>
+        </div>
+
+        <div className="flex-1" />
+
+        {/* CTA */}
+        <button
+          onClick={() => doVerify()}
+          disabled={loading || otp.join('').length < 6}
+          className="w-full py-5 rounded-2xl bg-gradient-to-r from-primary-container to-primary text-white font-black text-base tracking-wide shadow-lg shadow-primary/20 disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98] transition-all mb-8"
+        >
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="material-symbols-outlined animate-spin text-xl">progress_activity</span>
+              Verifying...
+            </span>
+          ) : 'Verify & Continue'}
         </button>
       </div>
     </div>

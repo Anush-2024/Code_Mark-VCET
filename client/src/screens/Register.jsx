@@ -24,26 +24,104 @@ export default function Register() {
   };
 
   return (
-    <div className="scr" style={{ display: 'flex' }}>
-      <div className="tnav">
-        <div className="bk" onClick={() => navigate('/')}><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></div>
-        <div className="ntl">Create Account</div>
-      </div>
-      <div className="sb" style={{ padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div className="ig"><div className="il">Full name</div><input className="if" value={name} onChange={e => setName(e.target.value)} type="text" placeholder="Riya Sharma"/></div>
-        <div className="ig"><div className="il">Mobile number</div>
-          <div className="ph-row"><div className="cc">+91</div><input className="if" style={{ flex: 1 }} value={phone} onChange={e => setPhone(e.target.value)} type="tel" placeholder="98765 43210" maxLength="10"/></div>
-        </div>
-        <div className="ig"><div className="il">Email (optional)</div><input className="if" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="riya@example.com"/></div>
-        {error && <div style={{ fontSize: 12, color: 'var(--red)', fontWeight: 600, padding: '8px 12px', background: 'var(--rbg)', borderRadius: 'var(--r3)', border: '1px solid rgba(255,118,117,.2)' }}>{error}</div>}
-        <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.7, padding: '10px 12px', background: 'var(--surface)', borderRadius: 'var(--r2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" style={{flexShrink:0,marginTop:2}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-          <span>A real OTP will be sent to your phone via Twilio. Only verified numbers work on trial accounts.</span>
-        </div>
-        <button className="btn btn-p" onClick={doRegister} disabled={loading || !name.trim() || phone.length < 10}>
-          {loading ? 'Sending OTP...' : 'Continue'}
+    <div className="fixed inset-0 bg-background flex flex-col overflow-hidden">
+      {/* Ambient glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-48 bg-primary/8 blur-[100px] rounded-full pointer-events-none" />
+
+      {/* Header */}
+      <header className="flex items-center gap-3 px-6 pt-10 pb-4 flex-shrink-0 relative z-10">
+        <button onClick={() => navigate('/')} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/5 transition-colors">
+          <span className="material-symbols-outlined text-slate-400">arrow_back</span>
         </button>
-        <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text2)' }}>Already have an account? <span style={{ color: 'var(--accent)', fontWeight: 700, cursor: 'pointer' }} onClick={() => navigate('/login')}>Sign in</span></div>
+        <h2 className="text-lg font-bold text-white">Create Account</h2>
+      </header>
+
+      <div className="flex-1 flex flex-col px-6 relative z-10 overflow-y-auto pb-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-black text-white tracking-tight mb-2">Join PocketPay</h1>
+          <p className="text-slate-400 text-sm">Your offline-first crypto wallet. Takes 2 minutes.</p>
+        </div>
+
+        <div className="space-y-5">
+          {/* Name */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Full Name</label>
+            <input
+              type="text"
+              placeholder="Riya Sharma"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full bg-[#0d0d15]/80 border border-outline-variant/20 rounded-2xl px-5 py-4 text-white placeholder-slate-700 focus:outline-none focus:border-primary/40 transition-colors text-base font-medium"
+            />
+          </div>
+
+          {/* Phone */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mobile Number</label>
+            <div className="bg-[#0d0d15]/80 border border-outline-variant/20 rounded-2xl flex items-center gap-3 px-5 py-4 focus-within:border-primary/40 transition-colors">
+              <div className="flex items-center gap-2 pr-4 border-r border-outline-variant/20 flex-shrink-0">
+                <span className="text-sm font-bold text-white">+91</span>
+              </div>
+              <input
+                type="tel"
+                placeholder="98765 43210"
+                value={phone}
+                onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                maxLength={10}
+                className="flex-1 bg-transparent border-none outline-none text-white placeholder-slate-700 text-base font-medium tracking-widest"
+              />
+            </div>
+          </div>
+
+          {/* Email */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Email (optional)</label>
+            <input
+              type="email"
+              placeholder="riya@example.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className="w-full bg-[#0d0d15]/80 border border-outline-variant/20 rounded-2xl px-5 py-4 text-white placeholder-slate-700 focus:outline-none focus:border-primary/40 transition-colors text-base font-medium"
+            />
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="bg-error/10 border border-error/20 rounded-xl px-4 py-3 flex items-center gap-3 text-sm text-error font-medium">
+              <span className="material-symbols-outlined text-base flex-shrink-0">error</span>
+              {error}
+            </div>
+          )}
+
+          {/* Info */}
+          <div className="bg-white/3 border border-outline-variant/15 rounded-xl px-4 py-3 flex items-start gap-3">
+            <span className="material-symbols-outlined text-slate-500 text-base flex-shrink-0 mt-0.5">info</span>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              An OTP will be sent to your number. For dev/testing, use OTP <strong className="text-slate-300">123456</strong>.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-8" />
+
+        {/* CTA */}
+        <button
+          onClick={doRegister}
+          disabled={loading || !name.trim() || phone.length < 10}
+          className="w-full py-5 rounded-2xl bg-gradient-to-r from-primary-container to-primary text-white font-black text-base tracking-wide shadow-lg shadow-primary/20 disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98] transition-all mt-6"
+        >
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="material-symbols-outlined animate-spin text-xl">progress_activity</span>
+              Sending OTP...
+            </span>
+          ) : 'Continue'}
+        </button>
+
+        <p className="text-center text-sm text-slate-500 mt-5">
+          Already have an account?{' '}
+          <span onClick={() => navigate('/login')} className="text-primary font-bold cursor-pointer hover:underline">Sign in</span>
+        </p>
       </div>
     </div>
   );

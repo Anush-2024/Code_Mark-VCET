@@ -1,18 +1,21 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useWalletStore } from '../store/walletStore';
 import { addUnconfirmedReceived } from '../services/walletService';
 import { verifySignature } from '../services/cryptoService';
 import { savePendingTxn, isNonceUsed, markNonceUsed } from '../services/storageService';
+import { notifyPaymentReceived } from '../services/notificationService';
 import jsQR from 'jsqr';
 
 export default function Receive() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, loadWalletState } = useWalletStore();
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const scanInterval = useRef(null);
+  const prefillHandled = useRef(false);
 
   const [scanning, setScanning] = useState(true);
   const [cameraError, setCameraError] = useState('');
@@ -48,6 +51,14 @@ export default function Receive() {
     };
   }, []);
 
+  // Handle prefilled QR data from ScanQR screen
+  useEffect(() => {
+    if (location.state?.prefillQR && !prefillHandled.current) {
+      prefillHandled.current = true;
+      handleQRDetected(location.state.prefillQR);
+    }
+  }, [location.state]);
+
   // Scan video frames for QR codes
   useEffect(() => {
     if (!scanning) return;
@@ -76,12 +87,39 @@ export default function Receive() {
     setVerifying(true);
 
     try {
-      const txn = JSON.parse(rawData);
+      // QR value is base64-encoded JSON from transactionService.js
+      // Decode: atob(rawData) -> JSON string -> parse
+      let decoded;
+      try {
+        decoded = JSON.parse(atob(rawData));
+      } catch (_) {
+        // Fallback: try parsing as raw JSON
+        try { decoded = JSON.parse(rawData); } catch { decoded = null; }
+      }
+
+      // ── MERCHANT QR: route to payment flow ──────────────────────────
+      if (decoded?.type === 'merchant_pay') {
+        if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+        navigate('/qr', { state: { mode: 'merchant_pay', merchantPayload: JSON.stringify(decoded) } });
+        return;
+      }
+
+      // ── P2P QR: existing flow ───────────────────────────────────────
+      // Map QR field names to internal field names
+      const { sig, ...payloadObj } = decoded || {};
+      const txn = {
+        ...payloadObj,
+        from_pub: decoded?.from,
+        signature: sig,
+        created_at: decoded?.ts,
+        expires_at: decoded?.expires,
+        payloadString: JSON.stringify(payloadObj),
+      };
       setScannedTxn(txn);
 
       // Validate fields
       if (!txn.id || !txn.amount || !txn.signature || !txn.from_pub || !txn.nonce) {
-        setVerifyResult({ valid: false, reason: 'Invalid QR payload — missing fields' });
+        setVerifyResult({ valid: false, reason: 'Invalid QR payload -- missing fields' });
         setShowModal(true);
         setVerifying(false);
         return;
@@ -99,18 +137,20 @@ export default function Receive() {
       // Check nonce replay
       const used = await isNonceUsed(txn.nonce);
       if (used) {
-        setVerifyResult({ valid: false, reason: 'Nonce already used — possible double spend' });
+        setVerifyResult({ valid: false, reason: 'Nonce already used -- possible double spend' });
         setShowModal(true);
         setVerifying(false);
         return;
       }
 
       // Verify Ed25519 signature
-      const payload = JSON.stringify({ id: txn.id, from: txn.from_pub, to: txn.to_pub, amount: txn.amount, nonce: txn.nonce, ts: txn.created_at });
-      const sigValid = await verifySignature(payload, txn.signature, txn.from_pub);
+      // Pass the original payload OBJECT (without sig) to verifySignature.
+      // verifySignature internally does JSON.stringify(payloadObj) which matches
+      // what signTransaction did on the sender side, preserving key order.
+      const sigValid = await verifySignature(payloadObj, txn.signature, txn.from_pub);
 
       if (sigValid) {
-        setVerifyResult({ valid: true, reason: 'Signature verified ✓' });
+        setVerifyResult({ valid: true, reason: 'Signature verified' });
       } else {
         setVerifyResult({ valid: false, reason: 'Invalid Ed25519 signature' });
       }
@@ -129,16 +169,16 @@ export default function Receive() {
     // Mark nonce as used
     await markNonceUsed(scannedTxn.nonce, scannedTxn.id);
 
-    // Save as unconfirmed received
+    // Save as unconfirmed received (include payloadString for backend sync)
     await savePendingTxn({
       id: scannedTxn.id,
       type: 'received',
-      from_user_id: scannedTxn.from_user_id,
       from_pub: scannedTxn.from_pub,
       to_user_id: user?.userId,
       amount: scannedTxn.amount,
       nonce: scannedTxn.nonce,
       signature: scannedTxn.signature,
+      payloadString: scannedTxn.payloadString,
       status: 'unconfirmed_received',
       mode: 'offline_p2p',
       created_at: scannedTxn.created_at,
@@ -148,6 +188,7 @@ export default function Receive() {
 
     await addUnconfirmedReceived(scannedTxn.amount);
     await loadWalletState();
+    await notifyPaymentReceived(scannedTxn.amount, scannedTxn.from_name || 'Someone');
     setShowModal(false);
     navigate('/home');
   };

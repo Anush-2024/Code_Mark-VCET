@@ -38,6 +38,27 @@ export default function RecoveryPhrase() {
   const [error, setError] = useState('');
   const phrase = useMemo(() => generatePhrase(), []);
 
+  // If state is lost (user refreshed or navigated here directly), redirect back
+  if (!pin || !phone || !name) {
+    return (
+      <div className="fixed inset-0 bg-background flex flex-col items-center justify-center px-6">
+        <div className="w-16 h-16 rounded-2xl bg-error/10 flex items-center justify-center mb-6">
+          <span className="material-symbols-outlined text-error text-3xl">error</span>
+        </div>
+        <h2 className="text-xl font-black text-white mb-2 text-center">Session Expired</h2>
+        <p className="text-slate-400 text-sm text-center mb-6">
+          Registration data was lost. Please start over.
+        </p>
+        <button
+          onClick={() => navigate('/register', { replace: true })}
+          className="w-full max-w-xs py-4 rounded-2xl bg-gradient-to-r from-primary-container to-primary text-white font-black"
+        >
+          Back to Register
+        </button>
+      </div>
+    );
+  }
+
   const finishRegister = async () => {
     setLoading(true); setError('');
     try {
@@ -72,25 +93,62 @@ export default function RecoveryPhrase() {
   };
 
   return (
-    <div className="scr" style={{ display: 'flex' }}>
-      <div className="tnav">
-        <div className="bk" onClick={() => navigate(-1)}><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></div>
-        <div className="ntl">Recovery Phrase</div>
-      </div>
-      <div className="sb" style={{ padding: '16px 18px' }}>
-        <div style={{ background: 'var(--abg)', border: '1px solid rgba(253,203,110,.2)', borderRadius: 'var(--r2)', padding: 13, marginBottom: 18, fontSize: 12, color: 'var(--amber)', lineHeight: 1.7, fontWeight: 600, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" style={{flexShrink:0,marginTop:1}}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>Write these 12 words in order. Anyone with this phrase can access your wallet. Keep them offline and secret.</span>
+    <div className="fixed inset-0 bg-background flex flex-col overflow-hidden">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-48 bg-primary/8 blur-[100px] rounded-full pointer-events-none" />
+
+      <header className="flex items-center gap-3 px-6 pt-10 pb-4 flex-shrink-0 relative z-10">
+        <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/5 transition-colors">
+          <span className="material-symbols-outlined text-slate-400">arrow_back</span>
+        </button>
+        <h2 className="text-lg font-bold text-white">Recovery Phrase</h2>
+      </header>
+
+      <div className="flex-1 flex flex-col px-6 relative z-10 overflow-y-auto pb-8">
+        {/* Warning */}
+        <div className="bg-tertiary/10 border border-tertiary/20 rounded-xl px-4 py-3 mb-5 flex items-start gap-3">
+          <span className="material-symbols-outlined text-tertiary text-base flex-shrink-0 mt-0.5">warning</span>
+          <p className="text-xs text-tertiary leading-relaxed font-medium">
+            Write these 12 words in order. Anyone with this phrase can access your wallet. Keep them offline and secret.
+          </p>
         </div>
-        <div className="pgrid" style={{ marginBottom: 18 }}>
-          {phrase.map((w, i) => (<div key={i} className="pw"><div className="pn">{i + 1}</div><div className="pt">{w}</div></div>))}
+
+        {/* Word grid */}
+        <div className="grid grid-cols-3 gap-2 mb-5">
+          {phrase.map((w, i) => (
+            <div key={i} className="bg-[#0d0d15]/80 border border-outline-variant/15 rounded-xl px-3 py-3 flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-600 w-4 text-right">{i + 1}</span>
+              <span className="text-sm font-bold text-white font-mono">{w}</span>
+            </div>
+          ))}
         </div>
-        {error && <div style={{ fontSize: 12, color: 'var(--red)', fontWeight: 600, padding: '8px 12px', background: 'var(--rbg)', borderRadius: 'var(--r3)', border: '1px solid rgba(255,118,117,.2)', marginBottom: 12 }}>{error}</div>}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          <button className="btn btn-s btn-sm" onClick={() => navigator.clipboard?.writeText(phrase.join(' '))}>Copy words</button>
-        </div>
-        <button className="btn btn-p" onClick={finishRegister} disabled={loading}>
-          {loading ? 'Creating wallet...' : "I've saved my phrase"}
+
+        {error && (
+          <div className="bg-error/10 border border-error/20 rounded-xl px-4 py-3 flex items-center gap-3 text-sm text-error font-medium mb-4">
+            <span className="material-symbols-outlined text-base flex-shrink-0">error</span>
+            {error}
+          </div>
+        )}
+
+        <button
+          onClick={() => navigator.clipboard?.writeText(phrase.join(' '))}
+          className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-slate-300 font-bold text-sm mb-4 active:scale-[0.98] transition-all"
+        >
+          Copy words
+        </button>
+
+        <div className="flex-1 min-h-4" />
+
+        <button
+          onClick={finishRegister}
+          disabled={loading}
+          className="w-full py-5 rounded-2xl bg-gradient-to-r from-primary-container to-primary text-white font-black text-base tracking-wide shadow-lg shadow-primary/20 disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98] transition-all"
+        >
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="material-symbols-outlined animate-spin text-xl">progress_activity</span>
+              Creating wallet...
+            </span>
+          ) : "I've saved my phrase"}
         </button>
       </div>
     </div>

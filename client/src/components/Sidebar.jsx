@@ -1,61 +1,171 @@
+import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useWalletStore } from '../store/walletStore';
 
-const NAV = [
-  { path: '/home', label: 'Dashboard', icon: <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></> },
-  { path: '/send', label: 'Send Money', icon: <><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></> },
-  { path: '/receive', label: 'Receive', icon: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></> },
-  { section: 'Wallet' },
-  { path: '/add-money', label: 'Add Money', icon: <><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></> },
-  { path: '/withdraw', label: 'Withdraw', icon: <><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/></> },
-  { path: '/history', label: 'History', icon: <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></> },
-  { section: 'Tools' },
-  { path: '/sync', label: 'Sync', icon: <><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></> },
-  { path: '/merchant', label: 'Merchant', icon: <><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></> },
-  { path: '/notifications', label: 'Notifications', icon: <><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></> },
+const WALLET_NAV = [
+  { path: '/home',      label: 'Dashboard',  icon: 'dashboard' },
+  { path: '/send',      label: 'Send Money', icon: 'payments' },
+  { path: '/receive',   label: 'Receive',    icon: 'download' },
+  { path: '/add-money', label: 'Add Money',  icon: 'add_card' },
+];
+
+const TOOLS_NAV = [
+  { path: '/history',       label: 'History',   icon: 'history' },
+  { path: '/sync',          label: 'Network',   icon: 'cloud_sync' },
+  { path: '/notifications', label: 'Activity',  icon: 'notifications' },
+  { path: '/merchant',      label: 'Merchant',  icon: 'storefront' },
+];
+
+// Mobile bottom nav items (most-used only)
+const MOBILE_NAV = [
+  { path: '/home',     label: 'Home',    icon: 'dashboard' },
+  { path: '/send',     label: 'Send',    icon: 'payments' },
+  { path: '/scan',     label: 'Scan',    icon: 'qr_code_scanner', isCTA: true },
+  { path: '/history',  label: 'History', icon: 'history' },
+  { path: '/merchant', label: 'Merchant',icon: 'storefront' },
 ];
 
 export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isOnline } = useWalletStore();
+  const [mobileOpen, setMobileOpen] = useState(false);
   const current = location.pathname;
   const initial = (user?.name || 'U')[0].toUpperCase();
 
-  return (
-    <div className="sidebar">
-      <div className="sidebar-logo">
-        <div className="sidebar-logo-icon">
-          <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 10h20"/></svg>
+  const NavItem = ({ item, onClick }) => {
+    const isActive = current === item.path;
+    return (
+      <li>
+        <button
+          onClick={() => { navigate(item.path); onClick?.(); }}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold transition-all duration-200 ${
+            isActive ? 'text-primary bg-primary/10' : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
+          }`}
+        >
+          <span className="material-symbols-outlined text-xl" style={isActive ? { fontVariationSettings: "'FILL' 1" } : {}}>
+            {item.icon}
+          </span>
+          <span className="text-xs font-bold uppercase tracking-wider flex-1 text-left">{item.label}</span>
+        </button>
+      </li>
+    );
+  };
+
+  const SidebarContent = ({ onClose }) => (
+    <>
+      {/* Logo */}
+      <div className="flex items-center gap-3 mb-10">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-container to-primary flex items-center justify-center">
+          <span className="material-symbols-outlined text-white" style={{ fontVariationSettings: "'FILL' 1" }}>credit_card</span>
         </div>
-        <div className="sidebar-logo-text">PocketPay</div>
+        <div>
+          <h1 className="text-xl font-black tracking-tight text-white">PocketPay</h1>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold">Midnight Vault</p>
+        </div>
       </div>
 
-      <div className="sidebar-nav">
-        {NAV.map((item, i) => {
-          if (item.section) return <div key={i} className="sidebar-section">{item.section}</div>;
-          return (
-            <div key={item.path} className={`sidebar-item ${current === item.path ? 'active' : ''}`} onClick={() => navigate(item.path)}>
-              <svg viewBox="0 0 24 24">{item.icon}</svg>
-              {item.label}
-              {item.path === '/sync' && isOnline && <div className="badge-dot" />}
-            </div>
-          );
-        })}
-      </div>
+      {/* Scan CTA — prominent on mobile drawer */}
+      <button
+        onClick={() => { navigate('/scan'); onClose?.(); }}
+        className="w-full mb-6 flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-primary-container to-primary text-white font-black text-sm tracking-wide shadow-lg shadow-primary/20 active:scale-95 transition-all"
+      >
+        <span className="material-symbols-outlined text-xl">qr_code_scanner</span>
+        Scan QR Code
+      </button>
 
-      <div className="sidebar-footer">
-        <div className="sidebar-user" onClick={() => navigate('/settings')}>
-          <div className="sidebar-avatar">{initial}</div>
-          <div>
-            <div className="sidebar-uname">{user?.name || 'User'}</div>
-            <div className="sidebar-ustatus">
-              <span className={`dot ${isOnline ? 'on' : 'off'}`} />
+      <nav className="flex-1 space-y-6">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-600 mb-3 px-2">Wallet</p>
+          <ul className="space-y-1">
+            {WALLET_NAV.map(item => <NavItem key={item.path} item={item} onClick={onClose} />)}
+          </ul>
+        </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-600 mb-3 px-2">Tools</p>
+          <ul className="space-y-1">
+            {TOOLS_NAV.map(item => <NavItem key={item.path} item={item} onClick={onClose} />)}
+          </ul>
+        </div>
+      </nav>
+
+      {/* User footer */}
+      <div className="pt-6 mt-6 border-t border-outline-variant/10">
+        <div className="flex items-center gap-3 px-2 cursor-pointer group" onClick={() => { navigate('/settings'); onClose?.(); }}>
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-container to-primary flex items-center justify-center text-white font-bold text-sm flex-shrink-0 group-hover:scale-105 transition-transform">
+            {initial}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-white truncate">{user?.name || 'User'}</p>
+            <p className="text-xs text-slate-500 flex items-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
               {isOnline ? 'Online' : 'Offline'}
-            </div>
+            </p>
+          </div>
+          <button className="text-slate-600 hover:text-primary transition-colors flex-shrink-0">
+            <span className="material-symbols-outlined text-xl">settings</span>
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* ── DESKTOP SIDEBAR (≥ lg) ──────────────────────────────── */}
+      <aside className="hidden lg:flex h-screen w-64 fixed left-0 top-0 overflow-y-auto bg-[#1b1b26] border-r border-outline-variant/10 flex-col py-8 px-6 z-50">
+        <SidebarContent />
+      </aside>
+
+      {/* ── MOBILE TOP BAR (< lg) ───────────────────────────────── */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-[#1b1b26]/95 backdrop-blur-xl border-b border-outline-variant/10 flex items-center justify-between px-4 z-40">
+        <button onClick={() => setMobileOpen(true)} className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-white/5">
+          <span className="material-symbols-outlined text-white">menu</span>
+        </button>
+        <span className="text-white font-black text-lg">PocketPay</span>
+        <button onClick={() => navigate('/scan')} className="w-9 h-9 flex items-center justify-center rounded-xl bg-primary/20">
+          <span className="material-symbols-outlined text-primary text-xl">qr_code_scanner</span>
+        </button>
+      </div>
+
+      {/* ── MOBILE DRAWER (< lg) ────────────────────────────────── */}
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+          {/* Drawer */}
+          <div className="relative w-72 max-w-[85vw] bg-[#1b1b26] h-full flex flex-col py-8 px-6 overflow-y-auto shadow-2xl animate-[slideInLeft_0.2s_ease-out]">
+            <SidebarContent onClose={() => setMobileOpen(false)} />
           </div>
         </div>
-      </div>
-    </div>
+      )}
+
+      {/* ── MOBILE BOTTOM NAV (< lg) ─────────────────────────────── */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#1b1b26]/95 backdrop-blur-xl border-t border-outline-variant/10 flex items-center justify-around px-2 z-40">
+        {MOBILE_NAV.map(item => {
+          const isActive = current === item.path;
+          if (item.isCTA) {
+            return (
+              <button key={item.path} onClick={() => navigate(item.path)}
+                className="flex flex-col items-center justify-center w-14 h-14 -mt-5 rounded-full bg-gradient-to-br from-primary-container to-primary shadow-lg shadow-primary/30 active:scale-90 transition-all">
+                <span className="material-symbols-outlined text-white text-2xl">qr_code_scanner</span>
+              </button>
+            );
+          }
+          return (
+            <button key={item.path} onClick={() => navigate(item.path)}
+              className="flex flex-col items-center gap-0.5 py-2 px-3 flex-1 active:scale-90 transition-all">
+              <span className={`material-symbols-outlined text-xl ${isActive ? 'text-primary' : 'text-slate-600'}`}
+                style={isActive ? { fontVariationSettings: "'FILL' 1" } : {}}>
+                {item.icon}
+              </span>
+              <span className={`text-[9px] font-bold uppercase tracking-wider ${isActive ? 'text-primary' : 'text-slate-600'}`}>
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+    </>
   );
 }
